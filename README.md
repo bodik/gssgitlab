@@ -50,17 +50,18 @@ following to `/etc/gitlab/gitlab.rb` and running `gitlab-ctl reconfigure`.
 user['shell'] = "/opt/gssgitlab/gssgitlabsh"
 ```
 
-Add folowwing to `sshd_config` to match Gitlab SSH Pubkey constraints and
-restart SSH service.
+Add following configuration to `sshd_config`, so sshd will export
+authentication data and enforce same restrictions for *git* user as gitlab uses
+for pubkey authentication.
 
 ```
+ExposeAuthInfo yes
 Match User git
 	PasswordAuthentication no
 	AllowTcpForwarding no
 	X11Forwarding no
 	AllowAgentForwarding no
 	PermitTTY no
-	PrintMotd no
 ```
 
 
@@ -82,3 +83,21 @@ the GitLab shell user's .k5login, and has an associated dummy SSH key, they
 will be put into the GitLab shell for doing all the pulling and pushing that
 they would be able to do with their normal SSH key. The ability to also
 authenticate with a normal SSH key is preserved.
+
+
+## Development
+
+Development tools are not required for production usage.
+
+```
+# create venv for development tools
+cd /opt/gssgitlab
+make venv
+. venv/bin/activate
+
+# install requirements and dependencies
+make install-deps
+
+# run qa, tests and coverage
+make
+```
