@@ -21,8 +21,8 @@ class GssGitlab:
     """gss gitlab shell"""
 
     def __init__(self, gitlab_home, gitlab_shell):
-        self.k5login = os.path.join(gitlab_home, '.k5login')
-        self.k5keys = os.path.join(gitlab_home, '.k5keys')
+        self.k5login = f'{gitlab_home}/.k5login'
+        self.k5keys = f'{gitlab_home}/.k5keys'
         self.shell = gitlab_shell
 
     @staticmethod
@@ -37,7 +37,7 @@ class GssGitlab:
             logging.error('principal not valid')
             return 1
 
-        tempkey_name = os.path.join('/dev/shm', 'gssgitlab-' + str(uuid4()))
+        tempkey_name = f'/dev/shm/gssgitlab-{uuid4()}'
         subprocess.run(
             ['ssh-keygen', '-q', '-t', 'ed25519', '-N', '', '-C', f'gss:{principal}', '-f', tempkey_name],
             check=True)

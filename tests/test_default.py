@@ -59,9 +59,9 @@ def test_syndb(tempdir):
         ret = gssgitlab_main(['--gitlab_home', tempdir, 'syncdb'])
 
     assert ret == 0
-    with open(os.path.join(tempdir, '.k5login')) as ftmp:
+    with open(f'{tempdir}/.k5login') as ftmp:
         assert 'principal1@REALM' in ftmp.read()
-    with open(os.path.join(tempdir, '.k5keys')) as ftmp:
+    with open(f'{tempdir}/.k5keys') as ftmp:
         assert 'principal2@REALM key-2' in ftmp.read()
 
 
@@ -78,7 +78,7 @@ def test_shell_local(tempdir):
     """
 
     def forking_execv(arg1, arg2):
-        with open(os.path.join(tempdir, 'mocked_stdout'), 'w') as ftmp:
+        with open(f'{tempdir}/mocked_stdout', 'w') as ftmp:
             return subprocess.run([arg1] + arg2[1:], stdout=ftmp, check=True)
 
     patch_environ = patch.object(os, 'environ', {k: v for k, v in os.environ.items() if not k.startswith('SSH_')})
@@ -88,7 +88,7 @@ def test_shell_local(tempdir):
         ret = gssgitlab_main(['shell', '-c', 'echo "shell executed $((1+1))"'])
 
     assert ret == 13
-    with open(os.path.join(tempdir, 'mocked_stdout'), 'r') as ftmp:
+    with open(f'{tempdir}/mocked_stdout', 'r') as ftmp:
         assert ftmp.read() == 'shell executed 2\n'
 
 
@@ -112,14 +112,14 @@ def test_shell_ssh_invalid_authentication(tempdir):
     with patch_environ, patch_execv:
         ret = gssgitlab_main(['shell', 'original_command', 'original_argument'])
     assert ret == 10
-    assert not os.path.exists(os.path.join(tempdir, 'mocked_stdout'))
+    assert not os.path.exists(f'{tempdir}/mocked_stdout')
 
 
 def test_shell_ssh_non_gss_authentication(tempdir):
     """Test execution with successfull non-gssapi authentication, should be passed and executed"""
 
     def forking_execv(arg1, arg2):
-        with open(os.path.join(tempdir, 'mocked_stdout'), 'w') as ftmp:
+        with open(f'{tempdir}/mocked_stdout', 'w') as ftmp:
             return subprocess.run([arg1] + arg2[1:], stdout=ftmp, check=True)
 
     tempenv = {k: v for k, v in os.environ.items() if not k.startswith('SSH_')}
@@ -127,7 +127,7 @@ def test_shell_ssh_non_gss_authentication(tempdir):
     patch_environ = patch.object(os, 'environ', tempenv)
     patch_execv = patch.object(os, 'execv', forking_execv)
 
-    authdata_file = os.path.join(tempdir, 'authdata')
+    authdata_file = f'{tempdir}/authdata'
     with open(authdata_file, 'w') as ftmp:
         ftmp.write('amethod andummyauthdata\n')
     tempenv['SSH_USER_AUTH'] = authdata_file
@@ -136,7 +136,7 @@ def test_shell_ssh_non_gss_authentication(tempdir):
         ret = gssgitlab_main(['shell', '-c', 'echo "shell executed $((1+1))"'])
 
     assert ret == 13
-    with open(os.path.join(tempdir, 'mocked_stdout'), 'r') as ftmp:
+    with open(f'{tempdir}/mocked_stdout', 'r') as ftmp:
         assert ftmp.read() == 'shell executed 2\n'
 
 
@@ -154,14 +154,14 @@ def test_shell_ssh_proper_gss_authentication(tempdir):
     """
 
     def forking_execv(arg1, arg2):
-        with open(os.path.join(tempdir, 'mocked_stdout'), 'w') as ftmp:
+        with open(f'{tempdir}/mocked_stdout', 'w') as ftmp:
             return subprocess.run([arg1] + arg2[1:], stdout=ftmp, check=True)
 
-    authdata_file = os.path.join(tempdir, 'authdata')
+    authdata_file = f'{tempdir}/authdata'
     with open(authdata_file, 'w') as ftmp:
         ftmp.write('gssapi-with-mic test@REALM\n')
 
-    with open(os.path.join(tempdir, '.k5keys'), 'w') as ftmp:
+    with open(f'{tempdir}/.k5keys', 'w') as ftmp:
         ftmp.write('test@REALM key-3\n')
 
     tempenv = {k: v for k, v in os.environ.items() if not k.startswith('SSH_')}
@@ -180,7 +180,7 @@ def test_shell_ssh_proper_gss_authentication(tempdir):
         assert os.environ.get('SSH_ORIGINAL_COMMAND') == 'original_argument'
 
     assert ret == 11
-    with open(os.path.join(tempdir, 'mocked_stdout'), 'r') as ftmp:
+    with open(f'{tempdir}/mocked_stdout', 'r') as ftmp:
         assert ftmp.read() == 'key-3\n'
 
 
@@ -195,12 +195,12 @@ def test_shell_ssh_non_mapped_gss_authentication(tempdir):
     patch_environ = patch.object(os, 'environ', tempenv)
     patch_execv = patch.object(os, 'execv', raising_execv)
 
-    authdata_file = os.path.join(tempdir, 'authdata')
+    authdata_file = f'{tempdir}/authdata'
     with open(authdata_file, 'w') as ftmp:
         ftmp.write('gssapi-with-mic non-mapped-principal@REALM\n')
     tempenv['SSH_USER_AUTH'] = authdata_file
 
-    with open(os.path.join(tempdir, '.k5keys'), 'w') as ftmp:
+    with open(f'{tempdir}/.k5keys', 'w') as ftmp:
         ftmp.write('test@REALM key-3\n')
 
     with patch_environ, patch_execv:
