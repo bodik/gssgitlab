@@ -14,7 +14,7 @@ from argparse import ArgumentParser
 from uuid import uuid4
 
 
-__version__ = '0.1'
+__version__ = '0.2'
 
 
 class GssGitlab:
@@ -71,39 +71,57 @@ class GssGitlab:
         return 0
 
     def do_shell(self, args):
-        """shell-exec subcommand"""
+        """
+        shell-exec subcommand
 
-        # on ssh connection run gitlab-shell
+        For ssh connections check authentication method and credential data.
+            - Die for unknown methods.
+            - For GSS-API resolve keyid and spawn gitlab-shell or die (k5login and k5keys are out-of-sync)
+            - For any other method or non-ssh connections pass the shell
+                - configuration does not allow Password authentication
+                - forcedcommand confines logon to gitlab-shell only
+        """
+
+        # on ssh connection
         if 'SSH_CONNECTION' in os.environ:
-            keyid = self._keyid_from_authdata()
-            if keyid:
-                if args:
-                    # during execution, the first argument is '-c' which needs to be stripped out
-                    os.environ['SSH_ORIGINAL_COMMAND'] = ' '.join(args[1:])
-                os.execv(self.shell, [self.shell, keyid])
+            method, keyid = self._get_authdata()
+
+            if not method:
                 return 10
-            return 11
 
-        # otherwise preserve shell for local services running under git account
+            if method == 'gssapi-with-mic':
+                if keyid:
+                    if args:
+                        # during execution, the first argument is '-c' which needs to be stripped out
+                        os.environ['SSH_ORIGINAL_COMMAND'] = ' '.join(args[1:])
+                    os.execv(self.shell, [self.shell, keyid])
+                    return 11
+                return 12
+
+        # otherwise pass to shell, either for standard forcedcommand or local services under git account
         os.execv('/bin/sh', ['/bin/sh'] + args)
-        return 12
+        return 13
 
-    def _keyid_from_authdata(self):
-        """resolve keyid for principal from exposed authentication info"""
+    def _get_authdata(self):
+        """
+        resolves keyid for gssapi authenticated principal from exposed authentication info
 
-        if 'SSH_USER_AUTH' not in os.environ:
-            return None
+        Returns:
+           tuple of (str method, str keyid)
+        """
 
         try:
             with open(os.environ['SSH_USER_AUTH'], 'r') as ftmp:
-                match = re.match(r'^gssapi-with-mic (?P<principal>.+)$', ftmp.read().strip())
-                if match and self.is_valid_principal(match.group('principal')):
-                    with open(self.k5keys, 'r') as ftmp:
-                        keydb = dict([line.split() for line in ftmp])
-                        return keydb.get(match.group('principal'))
-        except (OSError, ValueError):
+                method, authdata = ftmp.read().strip().split(maxsplit=1)
+            if (method == 'gssapi-with-mic') and self.is_valid_principal(authdata):
+                with open(self.k5keys, 'r') as ftmp:
+                    keydb = dict([line.split() for line in ftmp])
+                    return method, keydb.get(authdata)
+            else:
+                return method, None
+        except (KeyError, OSError, ValueError):
             pass
-        return None
+        return None, None
 
 
 def parse_arguments(argv=None):

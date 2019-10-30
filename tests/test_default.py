@@ -85,14 +85,62 @@ def test_shell_local(tempdir):
     patch_execv = patch.object(os, 'execv', forking_execv)
 
     with patch_environ, patch_execv:
-        ret = gssgitlab_main(['shell', '-c', 'echo "shell executed $((1+1)) args:$@"'])
+        ret = gssgitlab_main(['shell', '-c', 'echo "shell executed $((1+1))"'])
 
-    assert ret == 12
+    assert ret == 13
     with open(os.path.join(tempdir, 'mocked_stdout'), 'r') as ftmp:
-        assert ftmp.read() == 'shell executed 2 args:\n'
+        assert ftmp.read() == 'shell executed 2\n'
 
 
-def test_shell_ssh(tempdir):
+def test_shell_ssh_invalid_authentication(tempdir):
+    """
+    Test execution as ssh session without proper authentication
+
+    The test should not make it up to os.execv parts in any case, the function
+    is patched anyway to handle such situation.
+    """
+
+    def raising_execv(_arg1, _arg2):
+        assert False
+
+    tempenv = {k: v for k, v in os.environ.items() if not k.startswith('SSH_')}
+    tempenv['SSH_CONNECTION'] = 'dummy'
+    patch_environ = patch.object(os, 'environ', tempenv)
+    patch_execv = patch.object(os, 'execv', raising_execv)
+
+    # test ssh session without authdata
+    with patch_environ, patch_execv:
+        ret = gssgitlab_main(['shell', 'original_command', 'original_argument'])
+    assert ret == 10
+    assert not os.path.exists(os.path.join(tempdir, 'mocked_stdout'))
+
+
+def test_shell_ssh_non_gss_authentication(tempdir):
+    """Test execution with successfull non-gssapi authentication, should be passed and executed"""
+
+    def forking_execv(arg1, arg2):
+        with open(os.path.join(tempdir, 'mocked_stdout'), 'w') as ftmp:
+            return subprocess.run([arg1] + arg2[1:], stdout=ftmp, check=True)
+
+    tempenv = {k: v for k, v in os.environ.items() if not k.startswith('SSH_')}
+    tempenv['SSH_CONNECTION'] = 'dummy'
+    patch_environ = patch.object(os, 'environ', tempenv)
+    patch_execv = patch.object(os, 'execv', forking_execv)
+
+    authdata_file = os.path.join(tempdir, 'authdata')
+    with open(authdata_file, 'w') as ftmp:
+        ftmp.write('amethod andummyauthdata\n')
+    tempenv['SSH_USER_AUTH'] = authdata_file
+
+    with patch_environ, patch_execv:
+        ret = gssgitlab_main(['shell', '-c', 'echo "shell executed $((1+1))"'])
+
+    assert ret == 13
+    with open(os.path.join(tempdir, 'mocked_stdout'), 'r') as ftmp:
+        assert ftmp.read() == 'shell executed 2\n'
+
+
+def test_shell_ssh_proper_gss_authentication(tempdir):
     """
     Test execution as ssh session with authentication
 
@@ -131,18 +179,13 @@ def test_shell_ssh(tempdir):
 
         assert os.environ.get('SSH_ORIGINAL_COMMAND') == 'original_argument'
 
-    assert ret == 10
+    assert ret == 11
     with open(os.path.join(tempdir, 'mocked_stdout'), 'r') as ftmp:
         assert ftmp.read() == 'key-3\n'
 
 
-def test_shell_ssh_invalid_authentication(tempdir):
-    """
-    Test execution as ssh session without proper authentication
-
-    The test should not make it up to os.execv parts in any case, the function
-    is patched anyway to handle such situation.
-    """
+def test_shell_ssh_non_mapped_gss_authentication(tempdir):
+    """Test execution with non-mapped gss auth, eg. k5login and k5keys is out of sync"""
 
     def raising_execv(_arg1, _arg2):
         assert False
@@ -152,24 +195,18 @@ def test_shell_ssh_invalid_authentication(tempdir):
     patch_environ = patch.object(os, 'environ', tempenv)
     patch_execv = patch.object(os, 'execv', raising_execv)
 
-    # test ssh session without authdata
-    with patch_environ, patch_execv:
-        ret = gssgitlab_main(['shell', 'original_command', 'original_argument'])
-    assert ret == 11
-    assert not os.path.exists(os.path.join(tempdir, 'mocked_stdout'))
-
-    # test ssh session with invalid auth data
-    tempenv['SSH_USER_AUTH'] = '/tmp/invalid'
-    with patch_environ, patch_execv:
-        ret = gssgitlab_main(['shell', 'original_command', 'original_argument'])
-    assert ret == 11
-
-    # test ssh session without non-gssapi authentication
     authdata_file = os.path.join(tempdir, 'authdata')
     with open(authdata_file, 'w') as ftmp:
-        ftmp.write('password\n')
-
+        ftmp.write('gssapi-with-mic non-mapped-principal@REALM\n')
     tempenv['SSH_USER_AUTH'] = authdata_file
+
+    with open(os.path.join(tempdir, '.k5keys'), 'w') as ftmp:
+        ftmp.write('test@REALM key-3\n')
+
     with patch_environ, patch_execv:
-        ret = gssgitlab_main(['shell', 'original_command', 'original_argument'])
-    assert ret == 11
+        ret = gssgitlab_main([
+            '--gitlab_home', tempdir,
+            '--gitlab_shell', '/bin/echo',
+            'shell', 'original_command', 'echo original_argument'])
+
+    assert ret == 12
