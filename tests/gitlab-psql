@@ -1,0 +1,3 @@
+#!/bin/sh
+echo '1|principal1@REALM'
+echo '2|principal2@REALM'

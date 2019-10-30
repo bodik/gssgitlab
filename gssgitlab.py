@@ -35,7 +35,7 @@ def do_newkey(principal):
 
     if not is_valid_principal(principal):
         logging.error('principal not valid')
-        return False
+        return 1
 
     tempkey_name = os.path.join('/dev/shm', 'gssgitlab-' + str(uuid4()))
     tempkey_name_pub = tempkey_name + '.pub'
@@ -54,11 +54,25 @@ def do_newkey(principal):
 class GssGitlab:
     """gss gitlab shell"""
 
-    def __init__(self):
-        self.home = '/var/opt/gitlab'
-        self.k5login = os.path.join(self.home, '.k5login')
-        self.k5keys = os.path.join(self.home, '.k5keys')
-        self.shell = '/opt/gitlab/embedded/service/gitlab-shell/bin/gitlab-shell'
+    def __init__(self, gitlab_home, gitlab_shell):
+        self.k5login = os.path.join(gitlab_home, '.k5login')
+        self.k5keys = os.path.join(gitlab_home, '.k5keys')
+        self.shell = gitlab_shell
+
+    def do_syncdb(self):
+        """generate k5login and k5keys from keys registered in gitlab"""
+
+        dbkeys = gitlab_psql("select id, title from keys where title like 'gss:%'")
+
+        with open(self.k5keys, 'w') as ftmp:
+            for keyid, princ in dbkeys:
+                ftmp.write('%s key-%s\n' % (princ.replace('gss:', ''), keyid))
+
+        with open(self.k5login, 'w') as ftmp:
+            for keyid, princ in dbkeys:
+                ftmp.write('%s\n' % princ.replace('gss:', ''))
+
+        return 0
 
     def do_shell(self, args):
         """shell-exec subcommand"""
@@ -68,13 +82,15 @@ class GssGitlab:
             keyid = self._keyid_from_authdata()
             if keyid:
                 if args:
-                    os.putenv('SSH_ORIGINAL_COMMAND', ' '.join(args[1:]))
+                    # during git execution, the first argument is '-c' which needs to be stripped out
+                    os.environ['SSH_ORIGINAL_COMMAND'] = ' '.join(args[1:])
                 os.execv(self.shell, [self.shell, keyid])
-            return 1
+                return 10
+            return 11
 
         # otherwise preserve shell for local services running under git account
         os.execv('/bin/sh', ['/bin/sh'] + args)
-        return 1
+        return 12
 
     def _keyid_from_authdata(self):
         """resolve keyid for principal from exposed authentication info"""
@@ -98,42 +114,32 @@ class GssGitlab:
 
         return None
 
-    def do_syncdb(self):
-        """generate k5login and k5keys from keys registered in gitlab"""
 
-        dbkeys = gitlab_psql("select id, title from keys where title like 'gss:%'")
-
-        with open(self.k5keys, 'w') as ftmp:
-            for keyid, princ in dbkeys:
-                ftmp.write('%s key-%s\n' % (princ.replace('gss:', ''), keyid))
-
-        with open(self.k5login, 'w') as ftmp:
-            for keyid, princ in dbkeys:
-                ftmp.write('%s\n' % princ.replace('gss:', ''))
-
-
-def main():
+def main(argv=None):
     """main"""
 
     parser = ArgumentParser()
     subparsers = parser.add_subparsers(dest='subcommand')
-    subparsers.add_parser('newkey').add_argument('principal')
-    subparsers.add_parser('shell')
+    parser.add_argument('--gitlab_home', default='/var/opt/gitlab')
+    parser.add_argument('--gitlab_shell', default='/opt/gitlab/embedded/service/gitlab-shell/bin/gitlab-shell')
+    parser_newkey = subparsers.add_parser('newkey')
+    parser_newkey.add_argument('principal')
     subparsers.add_parser('syncdb')
-    args, unk_args = parser.parse_known_args()
+    subparsers.add_parser('shell')
+    args, unk_args = parser.parse_known_args(argv)
 
     if args.subcommand == 'newkey':
         return do_newkey(args.principal)
 
-    gssgitlab = GssGitlab()
+    gssgitlab = GssGitlab(args.gitlab_home, args.gitlab_shell)
     if args.subcommand == 'shell':
         return gssgitlab.do_shell(unk_args)
     if args.subcommand == 'syncdb':
         return gssgitlab.do_syncdb()
 
     logging.error('unknown subcommand')
-    return -1
+    return 1
 
 
-if __name__ == '__main__':
+if __name__ == '__main__':  # pragma: no cover
     sys.exit(main())
