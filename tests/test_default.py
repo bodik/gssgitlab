@@ -4,7 +4,7 @@ import os
 import subprocess
 import sys
 from copy import deepcopy
-from io import FileIO, StringIO
+from io import StringIO
 from unittest.mock import patch
 
 from gssgitlab import main as gssgitlab_main
@@ -66,7 +66,7 @@ def test_shell_local(tempdir):
     test execution as non-ssh session. if executed localy (without any SSH_ var
     in environment), gssgitlab should act like simple shell by passing all
     arguments through execv.
-    
+
     to test such behavior, os.environ and os.execv has to be patched in order
     to trigger proper code and to allow the test to finish and perform asserts.
     execution output is catched (stdout cannot be mocked) and evaluated against
@@ -75,9 +75,9 @@ def test_shell_local(tempdir):
 
     def forking_execv(arg1, arg2):
         with open(os.path.join(tempdir, 'mocked_stdout'), 'w') as ftmp:
-            return subprocess.run([arg1] + arg2[1:], stdout=ftmp)
+            return subprocess.run([arg1] + arg2[1:], stdout=ftmp, check=True)
 
-    patch_environ = patch.object(os, 'environ', {k: v for k,v in os.environ.items() if not k.startswith('SSH_')})
+    patch_environ = patch.object(os, 'environ', {k: v for k, v in os.environ.items() if not k.startswith('SSH_')})
     patch_execv = patch.object(os, 'execv', forking_execv)
 
     with patch_environ, patch_execv:
@@ -85,7 +85,7 @@ def test_shell_local(tempdir):
 
     assert ret == 12
     with open(os.path.join(tempdir, 'mocked_stdout'), 'r') as ftmp:
-        assert 'shell executed 2 args:\n' == ftmp.read()
+        assert ftmp.read() == 'shell executed 2 args:\n'
 
 
 def test_shell_ssh(tempdir):
@@ -95,7 +95,7 @@ def test_shell_ssh(tempdir):
     test execution as ssh session. if executed over ssh (with SSH_ vars in
     environment), gssgitlab should spawn configure gitlab-shell with keyid as
     argument.
-    
+
     to test such behavior, os.environ, used gitlab-shell path and os.execv has
     to be patched in order to trigger proper code and to allow the test to
     finish and perform asserts. execution output is catched (stdout cannot be
@@ -104,7 +104,7 @@ def test_shell_ssh(tempdir):
 
     def forking_execv(arg1, arg2):
         with open(os.path.join(tempdir, 'mocked_stdout'), 'w') as ftmp:
-            return subprocess.run([arg1] + arg2[1:], stdout=ftmp)
+            return subprocess.run([arg1] + arg2[1:], stdout=ftmp, check=True)
 
     authdata_file = os.path.join(tempdir, 'authdata')
     with open(authdata_file, 'w') as ftmp:
@@ -113,7 +113,7 @@ def test_shell_ssh(tempdir):
     with open(os.path.join(tempdir, '.k5keys'), 'w') as ftmp:
         ftmp.write('test@REALM key-3\n')
 
-    tempenv = {k: v for k,v in os.environ.items() if not k.startswith('SSH_')}
+    tempenv = {k: v for k, v in os.environ.items() if not k.startswith('SSH_')}
     tempenv['SSH_CONNECTION'] = 'dummy'
     tempenv['SSH_USER_AUTH'] = authdata_file
 
@@ -130,7 +130,7 @@ def test_shell_ssh(tempdir):
 
     assert ret == 10
     with open(os.path.join(tempdir, 'mocked_stdout'), 'r') as ftmp:
-        assert 'key-3\n' == ftmp.read()
+        assert ftmp.read() == 'key-3\n'
 
 
 def test_shell_ssh_not_authenticated(tempdir):
@@ -138,9 +138,9 @@ def test_shell_ssh_not_authenticated(tempdir):
 
     def forking_execv(arg1, arg2):
         with open(os.path.join(tempdir, 'mocked_stdout'), 'w') as ftmp:
-            return subprocess.run([arg1] + arg2[1:], stdout=ftmp)
+            return subprocess.run([arg1] + arg2[1:], stdout=ftmp, check=True)
 
-    tempenv = {k: v for k,v in os.environ.items() if not k.startswith('SSH_')}
+    tempenv = {k: v for k, v in os.environ.items() if not k.startswith('SSH_')}
     tempenv['SSH_CONNECTION'] = 'dummy'
     patch_environ = patch.object(os, 'environ', tempenv)
     patch_execv = patch.object(os, 'execv', forking_execv)
