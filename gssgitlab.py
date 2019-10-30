@@ -14,43 +14,6 @@ from argparse import ArgumentParser
 from uuid import uuid4
 
 
-def is_valid_principal(principal):
-    """check if principal is valid"""
-    return bool(re.match(r'^[a-z/]+@[A-Z\.\-]+$', principal))
-
-
-def gitlab_psql(sql):
-    """execute gitlab-psql query"""
-
-    proc = subprocess.run(
-        ['gitlab-psql', '--quiet', '--no-align', '--tuples-only', '--command', sql],
-        capture_output=True,
-        check=True,
-        text=True)
-    return [tuple(row.split('|')) for row in proc.stdout.splitlines()]
-
-
-def do_newkey(principal):
-    """generate temporary ssh key"""
-
-    if not is_valid_principal(principal):
-        logging.error('principal not valid')
-        return 1
-
-    tempkey_name = os.path.join('/dev/shm', 'gssgitlab-' + str(uuid4()))
-    tempkey_name_pub = tempkey_name + '.pub'
-    subprocess.run(
-        ['ssh-keygen', '-q', '-t', 'ed25519', '-N', '', '-C', 'gss:' + principal, '-f', tempkey_name],
-        check=True)
-    with open(tempkey_name_pub, 'r') as ftmp:
-        public_key = ftmp.read().strip()
-    os.unlink(tempkey_name)
-    os.unlink(tempkey_name_pub)
-
-    print(public_key)
-    return 0
-
-
 class GssGitlab:
     """gss gitlab shell"""
 
@@ -59,30 +22,58 @@ class GssGitlab:
         self.k5keys = os.path.join(gitlab_home, '.k5keys')
         self.shell = gitlab_shell
 
+    @staticmethod
+    def is_valid_principal(principal):
+        """check if principal is valid"""
+        return bool(re.match(r'^[a-z/]+@[A-Z\.\-]+$', principal))
+
+    def do_newkey(self, principal):
+        """generate temporary ssh key"""
+
+        if not self.is_valid_principal(principal):
+            logging.error('principal not valid')
+            return 1
+
+        tempkey_name = os.path.join('/dev/shm', 'gssgitlab-' + str(uuid4()))
+        subprocess.run(
+            ['ssh-keygen', '-q', '-t', 'ed25519', '-N', '', '-C', f'gss:{principal}', '-f', tempkey_name],
+            check=True)
+        with open(f'{tempkey_name}.pub', 'r') as ftmp:
+            public_key = ftmp.read().strip()
+        os.unlink(tempkey_name)
+        os.unlink(f'{tempkey_name}.pub')
+
+        print(public_key)
+        return 0
+
     def do_syncdb(self):
         """generate k5login and k5keys from keys registered in gitlab"""
 
-        dbkeys = gitlab_psql("select id, title from keys where title like 'gss:%'")
+        proc = subprocess.run(
+            [
+                'gitlab-psql', '--quiet', '--no-align', '--tuples-only',
+                '--command', "select id, title from keys where title like 'gss:%'"
+            ],
+            capture_output=True, check=True, text=True)
+        dbkeys = [tuple(row.split('|')) for row in proc.stdout.splitlines()]
 
-        with open(self.k5keys, 'w') as ftmp:
-            for keyid, princ in dbkeys:
-                ftmp.write('%s key-%s\n' % (princ.replace('gss:', ''), keyid))
-
-        with open(self.k5login, 'w') as ftmp:
-            for keyid, princ in dbkeys:
-                ftmp.write('%s\n' % princ.replace('gss:', ''))
+        with open(self.k5login, 'w') as fk5login:
+            with open(self.k5keys, 'w') as fk5keys:
+                for keyid, princ in dbkeys:
+                    fk5keys.write('%s key-%s\n' % (princ.replace('gss:', ''), keyid))
+                    fk5login.write('%s\n' % princ.replace('gss:', ''))
 
         return 0
 
     def do_shell(self, args):
         """shell-exec subcommand"""
 
-        # enforce gitlab-shell on ssh connection
+        # on ssh connection run gitlab-shell
         if 'SSH_CONNECTION' in os.environ:
             keyid = self._keyid_from_authdata()
             if keyid:
                 if args:
-                    # during git execution, the first argument is '-c' which needs to be stripped out
+                    # during execution, the first argument is '-c' which needs to be stripped out
                     os.environ['SSH_ORIGINAL_COMMAND'] = ' '.join(args[1:])
                 os.execv(self.shell, [self.shell, keyid])
                 return 10
@@ -100,38 +91,39 @@ class GssGitlab:
 
         try:
             with open(os.environ['SSH_USER_AUTH'], 'r') as ftmp:
-                match = re.match(r'^gssapi-with-mic (?P<principal>.*)$', ftmp.read().strip())
-                if (not match) or (not is_valid_principal(match.group('principal'))):
-                    return None
-
-            with open(self.k5keys, 'r') as ftmp:
-                for line in ftmp.read().splitlines():
-                    princ, keyid = line.split()
-                    if princ == match.group('principal'):
-                        return keyid
-        except OSError:
+                match = re.match(r'^gssapi-with-mic (?P<principal>.+)$', ftmp.read().strip())
+                if match and self.is_valid_principal(match.group('principal')):
+                    with open(self.k5keys, 'r') as ftmp:
+                        keydb = dict([line.split() for line in ftmp])
+                        return keydb.get(match.group('principal'))
+        except (OSError, ValueError):
             pass
-
         return None
+
+
+def parse_arguments(argv=None):
+    """parse arguments"""
+
+    parser = ArgumentParser()
+    parser.add_argument('--gitlab_home', default='/var/opt/gitlab')
+    parser.add_argument('--gitlab_shell', default='/opt/gitlab/embedded/service/gitlab-shell/bin/gitlab-shell')
+
+    subparsers = parser.add_subparsers(dest='subcommand')
+    subparsers.add_parser('newkey').add_argument('principal')
+    subparsers.add_parser('syncdb')
+    subparsers.add_parser('shell')
+
+    return parser.parse_known_args(argv)
 
 
 def main(argv=None):
     """main"""
 
-    parser = ArgumentParser()
-    subparsers = parser.add_subparsers(dest='subcommand')
-    parser.add_argument('--gitlab_home', default='/var/opt/gitlab')
-    parser.add_argument('--gitlab_shell', default='/opt/gitlab/embedded/service/gitlab-shell/bin/gitlab-shell')
-    parser_newkey = subparsers.add_parser('newkey')
-    parser_newkey.add_argument('principal')
-    subparsers.add_parser('syncdb')
-    subparsers.add_parser('shell')
-    args, unk_args = parser.parse_known_args(argv)
+    args, unk_args = parse_arguments(argv)
+    gssgitlab = GssGitlab(args.gitlab_home, args.gitlab_shell)
 
     if args.subcommand == 'newkey':
-        return do_newkey(args.principal)
-
-    gssgitlab = GssGitlab(args.gitlab_home, args.gitlab_shell)
+        return gssgitlab.do_newkey(args.principal)
     if args.subcommand == 'shell':
         return gssgitlab.do_shell(unk_args)
     if args.subcommand == 'syncdb':
