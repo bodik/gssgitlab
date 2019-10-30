@@ -3,14 +3,14 @@
 gssgitlab is a shell wrapper for Gitlab to provide SSH GSS-API (aka Kerberos)
 authenticated access to the repositories.
 
-The tool adds layer of Gitlab authorization on the top of the SSH GSS-API
-authentication support, which originaly lacks ForcedCommand feature (used by
-SSH Pubkey Gitlab access). gssgitlab acts as shell for *git* user handling
-remote logons for gitlab and passing through local invocations for system
-services. Also allows simple identity management functions for the system
-administrator.
+Project is heavily inspired by
+[Kgitlab](https://github.com/iamjamestl/kgitlab).
 
-Project is heavily inspired by [Kgitlab](https://github.com/iamjamestl/kgitlab).
+Because the GitLab shell expects SSH users to authenticate with SSH keys,
+gssgitlab allows to generate a sort of "dummy" SSH keys for users and upon
+their registration maps them to a Kerberos principals. Then, on login,
+gssgitlab can lookup the keyid associated with the Kerberos principal and pass
+the right key number to GitLab shell to authenticate the user.
 
 
 ## Motivation

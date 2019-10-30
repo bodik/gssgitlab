@@ -31,7 +31,12 @@ class GssGitlab:
         return bool(re.match(r'^[a-z][a-z0-9/_\.\-]*@[A-Z\.\-]+$', principal))
 
     def do_newkey(self, principal):
-        """generate temporary ssh key"""
+        """
+        Generate dummy ssh key used for mapping kerberos principal to gitlab
+        key/user identity. The actual key is not used (only registered keyid),
+        but it's easier to generate temporary one to get public part than to
+        fake the process some other way.
+        """
 
         if not self.is_valid_principal(principal):
             logging.error('principal not valid')
