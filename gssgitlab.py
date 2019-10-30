@@ -14,6 +14,9 @@ from argparse import ArgumentParser
 from uuid import uuid4
 
 
+__version__ = '0.1'
+
+
 class GssGitlab:
     """gss gitlab shell"""
 
@@ -25,7 +28,7 @@ class GssGitlab:
     @staticmethod
     def is_valid_principal(principal):
         """check if principal is valid"""
-        return bool(re.match(r'^[a-z/]+@[A-Z\.\-]+$', principal))
+        return bool(re.match(r'^[a-z0-9/_\.\-]+@[A-Z\.\-]+$', principal))
 
     def do_newkey(self, principal):
         """generate temporary ssh key"""
@@ -60,8 +63,10 @@ class GssGitlab:
         with open(self.k5login, 'w') as fk5login:
             with open(self.k5keys, 'w') as fk5keys:
                 for keyid, princ in dbkeys:
-                    fk5keys.write('%s key-%s\n' % (princ.replace('gss:', ''), keyid))
-                    fk5login.write('%s\n' % princ.replace('gss:', ''))
+                    princitem = princ.replace('gss:', '')
+                    if self.is_valid_principal(princitem):
+                        fk5keys.write('%s key-%s\n' % (princitem, keyid))
+                        fk5login.write('%s\n' % princitem)
 
         return 0
 
