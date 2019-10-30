@@ -12,77 +12,23 @@ from argparse import ArgumentParser
 from uuid import uuid4
 
 
-GITLAB_HOME = '/var/opt/gitlab'
-GITLAB_SHELL = '/opt/gitlab/embedded/service/gitlab-shell/bin/gitlab-shell'
-
-
 def is_valid_principal(principal):
     """check if principal is valid"""
     return bool(re.match(r'^[a-z/]+@[A-Z\.\-]+$', principal))
 
 
 def gitlab_psql(sql):
-    """execute gitlab psql and return result set"""
+    """execute gitlab-psql query"""
 
-    try:
-        proc = subprocess.run(
-            ['gitlab-psql', '--quiet', '--no-align', '--tuples-only', '--command', sql],
-            capture_output=True,
-            check=True,
-            text=True)
-        if proc.stdout:
-            return [tuple(row.split('|')) for row in proc.stdout.splitlines()]
-    except subprocess.SubprocessError:
-        logging.error('gitlab-psql failed')
-    return []
+    proc = subprocess.run(
+        ['gitlab-psql', '--quiet', '--no-align', '--tuples-only', '--command', sql],
+        capture_output=True,
+        check=True,
+        text=True)
+    return [tuple(row.split('|')) for row in proc.stdout.splitlines()]
 
 
-def keyid_from_authdata():
-    """resolve keyid for principal from exposed authentication info"""
-
-    if 'SSH_USER_AUTH' not in os.environ:
-        return None
-
-    try:
-        with open(os.environ['SSH_USER_AUTH'], 'r') as ftmp:
-            match = re.match('gssapi-with-mic (?P<principal>.*)', ftmp.read())
-            if (not match) or (not is_valid_principal(match.group('principal'))):
-                return None
-    except OSError:
-        return None
-
-    try:
-        with open(os.path.join(GITLAB_HOME, '.k5keys')) as ftmp:
-            for line in ftmp.read().splitlines():
-                princ, keyid = line.split(' ')
-                if princ == match.group('principal'):
-                    return keyid
-    except OSError:
-        return None
-
-    return None
-
-
-def exec_shell(command=None):
-    """shell-exec subcommand"""
-
-    # over ssh connection, we must enforce gitlab-shell
-    if 'SSH_CONNECTION' in os.environ:
-        keyid = keyid_from_authdata()
-        if keyid:
-            if command:
-                os.putenv('SSH_ORIGINAL_COMMAND', command)
-            os.execv(GITLAB_SHELL, [GITLAB_SHELL, keyid])
-        return 1
-
-    # otherwise preserve shell for local services running under git account
-    if command:
-        os.execv('/bin/sh', ['/bin/sh', '-c', command])
-    os.execv('/bin/sh', ['/bin/sh'])
-    return 1
-
-
-def generate_key(principal):
+def do_generate_key(principal):
     """generate temporary ssh key"""
 
     if not is_valid_principal(principal):
@@ -103,47 +49,86 @@ def generate_key(principal):
     return 0
 
 
-def generate_configs():
-    """generate k5login and k5keys from keys registered in gitlab"""
+class GssGitlab:
+    """gss gitlab shell"""
 
-    dbkeys = gitlab_psql("select id, title from keys where title like 'gss:%'")
+    def __init__(self):
+        self.home = '/var/opt/gitlab'
+        self.k5login = os.path.join(self.home, '.k5login')
+        self.k5keys = os.path.join(self.home, '.k5keys')
+        self.shell = '/opt/gitlab/embedded/service/gitlab-shell/bin/gitlab-shell'
 
-    with open(os.path.join(GITLAB_HOME, '.k5keys'), 'w') as ftmp:
-        for keyid, princ in dbkeys:
-            ftmp.write('%s key-%s\n' % (princ.replace('gss:', ''), keyid))
+    def do_exec_shell(self, args):
+        """shell-exec subcommand"""
 
-    with open(os.path.join(GITLAB_HOME, '.k5login'), 'w') as ftmp:
-        for keyid, princ in dbkeys:
-            ftmp.write('%s\n' % princ.replace('gss:', ''))
+        # enforce gitlab-shell on ssh connection
+        if 'SSH_CONNECTION' in os.environ:
+            keyid = self._keyid_from_authdata()
+            if keyid:
+                if args:
+                    os.putenv('SSH_ORIGINAL_COMMAND', ' '.join(args[1:]))
+                os.execv(self.shell, [self.shell, keyid])
+            return 1
 
+        # otherwise preserve shell for local services running under git account
+        os.execv('/bin/sh', ['/bin/sh'] + args)
+        return 1
 
-def parse_arguments():
-    """parse arguments"""
+    def _keyid_from_authdata(self):
+        """resolve keyid for principal from exposed authentication info"""
 
-    parser = ArgumentParser()
-    subparsers = parser.add_subparsers(dest='subcommand')
+        if 'SSH_USER_AUTH' not in os.environ:
+            return None
 
-    exec_shell_parser = subparsers.add_parser('exec-shell')
-    exec_shell_parser.add_argument('-c', dest='command')
+        try:
+            with open(os.environ['SSH_USER_AUTH'], 'r') as ftmp:
+                match = re.match(r'^gssapi-with-mic (?P<principal>.*)$', ftmp.read().strip())
+                if (not match) or (not is_valid_principal(match.group('principal'))):
+                    return None
 
-    generate_key_parser = subparsers.add_parser('generate-key')
-    generate_key_parser.add_argument('principal')
+            with open(self.k5keys, 'r') as ftmp:
+                for line in ftmp.read().splitlines():
+                    princ, keyid = line.split()
+                    if princ == match.group('principal'):
+                        return keyid
+        except OSError:
+            pass
 
-    subparsers.add_parser('generate-configs')
+        return None
 
-    return parser.parse_args()
+    def do_generate_configs(self):
+        """generate k5login and k5keys from keys registered in gitlab"""
+
+        dbkeys = gitlab_psql("select id, title from keys where title like 'gss:%'")
+
+        with open(self.k5keys, 'w') as ftmp:
+            for keyid, princ in dbkeys:
+                ftmp.write('%s key-%s\n' % (princ.replace('gss:', ''), keyid))
+
+        with open(self.k5login, 'w') as ftmp:
+            for keyid, princ in dbkeys:
+                ftmp.write('%s\n' % princ.replace('gss:', ''))
 
 
 def main():
     """main"""
 
-    args = parse_arguments()
-    if args.subcommand == 'exec-shell':
-        return exec_shell(args.command)
+    parser = ArgumentParser()
+    subparsers = parser.add_subparsers(dest='subcommand')
+    subparsers.add_parser('generate-key').add_argument('principal')
+    subparsers.add_parser('exec-shell')
+    subparsers.add_parser('generate-configs')
+    args, unk_args = parser.parse_known_args()
+
     if args.subcommand == 'generate-key':
-        return generate_key(args.principal)
+        return do_generate_key(args.principal)
+
+    gssgitlab = GssGitlab()
+    if args.subcommand == 'exec-shell':
+        return gssgitlab.do_exec_shell(unk_args)
     if args.subcommand == 'generate-configs':
-        return generate_configs()
+        return gssgitlab.do_generate_configs()
+
     logging.error('unknown subcommand')
     return -1
 
