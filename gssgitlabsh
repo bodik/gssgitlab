@@ -1,2 +1,2 @@
 #!/bin/sh
-exec /opt/gssgitlab/gssgitlab.py exec-shell "$@"
+exec /opt/gssgitlab/gssgitlab.py shell "$@"

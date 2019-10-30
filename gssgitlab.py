@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 """
+gssgitlab provides shell replacement for git user on
+gitlab server allowing users to seamlesly use GSSAPI authentication over ssh.
 inspired by https://github.com/iamjamestl/kgitlab
 """
 
@@ -28,7 +30,7 @@ def gitlab_psql(sql):
     return [tuple(row.split('|')) for row in proc.stdout.splitlines()]
 
 
-def do_generate_key(principal):
+def do_newkey(principal):
     """generate temporary ssh key"""
 
     if not is_valid_principal(principal):
@@ -58,7 +60,7 @@ class GssGitlab:
         self.k5keys = os.path.join(self.home, '.k5keys')
         self.shell = '/opt/gitlab/embedded/service/gitlab-shell/bin/gitlab-shell'
 
-    def do_exec_shell(self, args):
+    def do_shell(self, args):
         """shell-exec subcommand"""
 
         # enforce gitlab-shell on ssh connection
@@ -96,7 +98,7 @@ class GssGitlab:
 
         return None
 
-    def do_generate_configs(self):
+    def do_syncdb(self):
         """generate k5login and k5keys from keys registered in gitlab"""
 
         dbkeys = gitlab_psql("select id, title from keys where title like 'gss:%'")
@@ -115,19 +117,19 @@ def main():
 
     parser = ArgumentParser()
     subparsers = parser.add_subparsers(dest='subcommand')
-    subparsers.add_parser('generate-key').add_argument('principal')
-    subparsers.add_parser('exec-shell')
-    subparsers.add_parser('generate-configs')
+    subparsers.add_parser('newkey').add_argument('principal')
+    subparsers.add_parser('shell')
+    subparsers.add_parser('syncdb')
     args, unk_args = parser.parse_known_args()
 
-    if args.subcommand == 'generate-key':
-        return do_generate_key(args.principal)
+    if args.subcommand == 'newkey':
+        return do_newkey(args.principal)
 
     gssgitlab = GssGitlab()
-    if args.subcommand == 'exec-shell':
-        return gssgitlab.do_exec_shell(unk_args)
-    if args.subcommand == 'generate-configs':
-        return gssgitlab.do_generate_configs()
+    if args.subcommand == 'shell':
+        return gssgitlab.do_shell(unk_args)
+    if args.subcommand == 'syncdb':
+        return gssgitlab.do_syncdb()
 
     logging.error('unknown subcommand')
     return -1
