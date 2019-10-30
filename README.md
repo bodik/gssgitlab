@@ -5,12 +5,12 @@ access to the repositories.
 
 The tool adds layer of Gitlab authorization on the top of the SSH GSS-API
 authentication support, which originaly lacks ForcedCommand feature (used by
-SSH Pubkey Gitlab access). gssgitlab acts as shell for `git` handling remote
-logons for gitlab users and passing through local invocations for system
+SSH Pubkey Gitlab access). gssgitlab acts as shell for *git* user handling
+remote logons for gitlab and passing through local invocations for system
 services. Also allows simple identity management functions for the system
 administrator.
 
-Project is heavily inspired by (Kgitlab)[https://github.com/iamjamestl/kgitlab]. 
+Project is heavily inspired by [Kgitlab](https://github.com/iamjamestl/kgitlab).
 
 
 ## Motivation
@@ -20,19 +20,19 @@ HTTPS. The SPNEGO support is officialy declared only for EE edition, also
 works in CE (as of fall 2019), but there are few problems with it.
 
 On Windows workstations with non-domain setup and/or with MIT Kerberos
-installed, `git.exe` requires ticket in LSA cache, which can be provided by
-`mit2ms.exe`, but given that MS ecosystem can be changed anytime it might cause
+installed, *git.exe* requires ticket in LSA cache, which can be provided by
+*mit2ms.exe*, but given that MS ecosystem can be changed anytime it might cause
 serious troubles in the future (possibly with the uprise of the Credential
 Guard and related technologies). Also the method leaves two possibly
 out-of-sync credential caches in the system.
 
-Kgitlab project solves the SSH GSS-API in nice way (shell wrapper with realtime
-configuration service), but there are also issues.
+Kgitlab project adds SSH GSS-API support in a nice way (shell wrapper and
+realtime configuration service), but there are also issues.
 
 The main issue is that kgitlab requires credential delegation, which allows
 Gitlab administrator (or an attacker) to steal kerberos tickets and thus
-identity theft attack. Kgitlab completely lacks test suite or coverage so the
-patching for non-Ruby developer is uneasy.
+identity theft. Also kgitlab lacks test suite and coverage so the patching for
+non-Ruby developer is uneasy.
 
 
 ## Instalation and usage
