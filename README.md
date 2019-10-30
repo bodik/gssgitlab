@@ -90,8 +90,12 @@ authenticate with a normal SSH key is preserved.
 Development tools are not required for production usage.
 
 ```
-# create venv for development tools
 cd /opt/gssgitlab
+
+# ensure git settings on cloud nodes
+ln -s ../../extra/git_hookprecommit.sh .git/hooks/pre-commit
+
+# create venv for development tools
 make venv
 . venv/bin/activate
 
