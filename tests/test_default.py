@@ -11,7 +11,7 @@ from gssgitlab import main as gssgitlab_main
 
 
 def test_unknown_subcommand():
-    """test unknown subcommand"""
+    """Test unknown subcommand"""
 
     patch_argv = patch.object(sys, 'argv', ['gssgitlab.py'])
 
@@ -22,7 +22,7 @@ def test_unknown_subcommand():
 
 
 def test_newkey():
-    """test newkey"""
+    """Test newkey"""
 
     buf_stdout = StringIO()
     patch_stdout = patch.object(sys, 'stdout', buf_stdout)
@@ -37,7 +37,7 @@ def test_newkey():
 
 
 def test_newkey_invalid_principal():
-    """test newkey invalid principal"""
+    """Test newkey with invalid principal"""
 
     ret = gssgitlab_main(['newkey', 'invalid_principal'])
 
@@ -45,7 +45,11 @@ def test_newkey_invalid_principal():
 
 
 def test_syndb(tempdir):
-    """test syndb"""
+    """
+    Test syndb
+
+    PATH is patched so the test does not require real gitlab installation
+    """
 
     tempenv = deepcopy(os.environ)
     tempenv['PATH'] = './tests:' + tempenv['PATH']
@@ -63,13 +67,13 @@ def test_syndb(tempdir):
 
 def test_shell_local(tempdir):
     """
-    test execution as non-ssh session. if executed localy (without any SSH_ var
+    Test execution as non-ssh session. if executed localy (without any SSH_ var
     in environment), gssgitlab should act like simple shell by passing all
     arguments through execv.
 
-    to test such behavior, os.environ and os.execv has to be patched in order
+    To test such behavior, os.environ and os.execv has to be patched in order
     to trigger proper code and to allow the test to finish and perform asserts.
-    execution output is catched (stdout cannot be mocked) and evaluated against
+    Execution output is catched (stdout cannot be mocked) and evaluated against
     expected shell output.
     """
 
@@ -90,15 +94,14 @@ def test_shell_local(tempdir):
 
 def test_shell_ssh(tempdir):
     """
-    test execution as ssh session with authentication
+    Test execution as ssh session with authentication
 
-    test execution as ssh session. if executed over ssh (with SSH_ vars in
-    environment), gssgitlab should spawn configure gitlab-shell with keyid as
-    argument.
+    If executed over ssh (with SSH_ vars in environment), gssgitlab should
+    spawn configure gitlab-shell with keyid as argument.
 
-    to test such behavior, os.environ, used gitlab-shell path and os.execv has
+    To test such behavior, os.environ, used gitlab-shell path and os.execv has
     to be patched in order to trigger proper code and to allow the test to
-    finish and perform asserts. execution output is catched (stdout cannot be
+    finish and perform asserts. Execution output is catched (stdout cannot be
     mocked) and evaluated against expected output.
     """
 
@@ -133,19 +136,23 @@ def test_shell_ssh(tempdir):
         assert ftmp.read() == 'key-3\n'
 
 
-def test_shell_ssh_not_authenticated(tempdir):
-    """test execution as ssh session without proper authentication"""
+def test_shell_ssh_invalid_authentication(tempdir):
+    """
+    Test execution as ssh session without proper authentication
 
-    def forking_execv(arg1, arg2):
-        with open(os.path.join(tempdir, 'mocked_stdout'), 'w') as ftmp:
-            return subprocess.run([arg1] + arg2[1:], stdout=ftmp, check=True)
+    The test should not make it up to os.execv parts in any case, the function
+    is patched anyway to handle such situation.
+    """
+
+    def raising_execv(_arg1, _arg2):
+        assert False
 
     tempenv = {k: v for k, v in os.environ.items() if not k.startswith('SSH_')}
     tempenv['SSH_CONNECTION'] = 'dummy'
     patch_environ = patch.object(os, 'environ', tempenv)
-    patch_execv = patch.object(os, 'execv', forking_execv)
+    patch_execv = patch.object(os, 'execv', raising_execv)
 
-    # test ssh session without auth
+    # test ssh session without authdata
     with patch_environ, patch_execv:
         ret = gssgitlab_main(['shell', 'original_command', 'original_argument'])
     assert ret == 11
