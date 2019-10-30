@@ -28,7 +28,7 @@ class GssGitlab:
     @staticmethod
     def is_valid_principal(principal):
         """check if principal is valid"""
-        return bool(re.match(r'^[a-z0-9/_\.\-]+@[A-Z\.\-]+$', principal))
+        return bool(re.match(r'^[a-z][a-z0-9/_\.\-]*@[A-Z\.\-]+$', principal))
 
     def do_newkey(self, principal):
         """generate temporary ssh key"""
