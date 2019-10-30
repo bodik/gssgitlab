@@ -14,7 +14,7 @@ from argparse import ArgumentParser
 from uuid import uuid4
 
 
-__version__ = '0.2'
+__version__ = '0.3-dev'
 
 
 class GssGitlab:
@@ -65,8 +65,9 @@ class GssGitlab:
                 for keyid, princ in dbkeys:
                     princitem = princ.replace('gss:', '')
                     if self.is_valid_principal(princitem):
-                        fk5keys.write('%s key-%s\n' % (princitem, keyid))
-                        fk5login.write('%s\n' % princitem)
+                        fk5keys.write(f'{princitem} key-{keyid}\n')
+                        fk5login.write(f'{princitem}\n')
+                        print(f'added {princitem}')
 
         return 0
 
