@@ -1,7 +1,7 @@
 # gssgitlab
 
-gssgitlab is a shell wrapper for Gitlab to provide SSH GSS-API authenticated
-access to the repositories.
+gssgitlab is a shell wrapper for Gitlab to provide SSH GSS-API (aka Kerberos)
+authenticated access to the repositories.
 
 The tool adds layer of Gitlab authorization on the top of the SSH GSS-API
 authentication support, which originaly lacks ForcedCommand feature (used by
