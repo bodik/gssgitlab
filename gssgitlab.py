@@ -23,7 +23,7 @@ class GssGitlab:
     def __init__(self, gitlab_home, gitlab_shell):
         self.k5login = f'{gitlab_home}/.k5login'
         self.k5keys = f'{gitlab_home}/.k5keys'
-        self.shell = gitlab_shell
+        self.gitlab_shell = gitlab_shell
 
     @staticmethod
     def is_valid_principal(principal):
@@ -89,11 +89,14 @@ class GssGitlab:
         shell-exec subcommand
 
         For ssh connections check authentication method and credential data.
-            - Die for unknown methods.
-            - For GSS-API resolve keyid and spawn gitlab-shell or die (k5login and k5keys are out-of-sync)
-            - For any other method or non-ssh connections pass the shell
-                - configuration does not allow Password authentication
-                - forcedcommand confines logon to gitlab-shell only
+            - for unknown authentication methods die/return
+            - for GSS-API authenticated sessions
+                - resolve keyid based on principal and spawn gitlab-shell
+                - die/return if keyid is not properly registered; k5login and k5keys are out-of-sync
+            - for any other method or non-ssh session pass the command to the normal shell
+                - sshd configuration does not allow Password authentication
+                  and ForcedCommand confines logon to gitlab-shell only
+                - local invocations executes normaly for local services
         """
 
         # on ssh connection
@@ -108,7 +111,7 @@ class GssGitlab:
                     if args:
                         # during execution, the first argument is '-c' which needs to be stripped out
                         os.environ['SSH_ORIGINAL_COMMAND'] = ' '.join(args[1:])
-                    os.execv(self.shell, [self.shell, keyid])
+                    os.execv(self.gitlab_shell, [self.gitlab_shell, keyid])
                     return 11
                 return 12
 
