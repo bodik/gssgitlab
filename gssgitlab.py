@@ -42,14 +42,18 @@ class GssGitlab:
             logging.error('principal not valid')
             return 1
 
-        tempkey_name = f'/dev/shm/gssgitlab-{uuid4()}'
-        subprocess.run(
-            ['ssh-keygen', '-q', '-t', 'ed25519', '-N', '', '-C', f'gss:{principal}', '-f', tempkey_name],
-            check=True)
-        with open(f'{tempkey_name}.pub', 'r') as ftmp:
-            public_key = ftmp.read().strip()
-        os.unlink(tempkey_name)
-        os.unlink(f'{tempkey_name}.pub')
+        try:
+            tempkey_name = f'/dev/shm/gssgitlab-{uuid4()}'
+            subprocess.run(
+                ['ssh-keygen', '-q', '-t', 'ed25519', '-N', '', '-C', f'gss:{principal}', '-f', tempkey_name],
+                check=True)
+            with open(f'{tempkey_name}.pub', 'r') as ftmp:
+                public_key = ftmp.read().strip()
+            os.unlink(tempkey_name)
+            os.unlink(f'{tempkey_name}.pub')
+        except (subprocess.CalledProcessError, OSError) as e:
+            logging.error('key generation failed: %s', e)
+            return 1
 
         print(public_key)
         return 0
@@ -57,22 +61,26 @@ class GssGitlab:
     def do_syncdb(self):
         """generate k5login and k5keys from keys registered in gitlab"""
 
-        proc = subprocess.run(
-            [
-                'gitlab-psql', '--quiet', '--no-align', '--tuples-only',
-                '--command', "select id, title from keys where title like 'gss:%'"
-            ],
-            capture_output=True, check=True, text=True)
-        dbkeys = [tuple(row.split('|')) for row in proc.stdout.splitlines()]
+        try:
+            proc = subprocess.run(
+                [
+                    'gitlab-psql', '--quiet', '--no-align', '--tuples-only',
+                    '--command', "select id, title from keys where title like 'gss:%'"
+                ],
+                capture_output=True, check=True, text=True)
+            dbkeys = [tuple(row.split('|')) for row in proc.stdout.splitlines()]
 
-        with open(self.k5login, 'w') as fk5login:
-            with open(self.k5keys, 'w') as fk5keys:
-                for keyid, princ in dbkeys:
-                    princitem = princ.replace('gss:', '')
-                    if self.is_valid_principal(princitem):
-                        fk5keys.write(f'{princitem} key-{keyid}\n')
-                        fk5login.write(f'{princitem}\n')
-                        print(f'added {princitem}')
+            with open(self.k5login, 'w') as fk5login:
+                with open(self.k5keys, 'w') as fk5keys:
+                    for keyid, princ in dbkeys:
+                        princitem = princ.replace('gss:', '')
+                        if self.is_valid_principal(princitem):
+                            fk5keys.write(f'{princitem} key-{keyid}\n')
+                            fk5login.write(f'{princitem}\n')
+                            print(f'added {princitem}')
+        except (subprocess.CalledProcessError, OSError) as e:
+            logging.error('database sync failed: %s', e)
+            return 1
 
         return 0
 
