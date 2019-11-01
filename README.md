@@ -39,6 +39,10 @@ non-Ruby developer is uneasy.
 
 ## Instalation and usage
 
+Requirements:
+  * python >= 3.7
+  * OpenSSH >= 7.5
+
 Clone the repository.
 
 ```
