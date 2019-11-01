@@ -150,13 +150,18 @@ def parse_arguments(argv=None):
     """parse arguments"""
 
     parser = ArgumentParser()
-    parser.add_argument('--gitlab_home', default='/var/opt/gitlab')
-    parser.add_argument('--gitlab_shell', default='/opt/gitlab/embedded/service/gitlab-shell/bin/gitlab-shell')
+    parser.add_argument(
+        '--gitlab_home', default='/var/opt/gitlab',
+        help='home of the managed user; k5login and k5keys of syncdb destination')
+    parser.add_argument(
+        '--gitlab_shell', default='/opt/gitlab/embedded/service/gitlab-shell/bin/gitlab-shell',
+        help='absolute gitlab-shell path')
 
-    subparsers = parser.add_subparsers(dest='subcommand')
-    subparsers.add_parser('newkey').add_argument('principal')
-    subparsers.add_parser('syncdb')
-    subparsers.add_parser('shell')
+    subparsers = parser.add_subparsers(dest='subcommand', required=True)
+    newkey_parser = subparsers.add_parser('newkey', help='generate new dummy key')
+    newkey_parser.add_argument('principal', help='principal to generate key for')
+    subparsers.add_parser('syncdb', help='generate k5login and k5keys from gitlab database registered keys')
+    subparsers.add_parser('shell', help='gssapi to keyid shell wrapper')
 
     return parser.parse_known_args(argv)
 
@@ -174,8 +179,7 @@ def main(argv=None):
     if args.subcommand == 'syncdb':
         return gssgitlab.do_syncdb()
 
-    logging.error('unknown subcommand')
-    return 1
+    return 1  # pragma: no cover  ; merely for pylint only, execution never gets here because of required subcommand
 
 
 if __name__ == '__main__':  # pragma: no cover
