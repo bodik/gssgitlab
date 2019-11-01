@@ -14,7 +14,7 @@ from argparse import ArgumentParser
 from uuid import uuid4
 
 
-__version__ = '0.3-dev'
+__version__ = '0.3'
 
 
 class GssGitlab:
