@@ -32,10 +32,11 @@ class GssGitlab:
 
     def do_newkey(self, principal):
         """
-        Generate dummy ssh key used for mapping kerberos principal to gitlab
-        key/user identity. The actual key is not used (only registered keyid),
-        but it's easier to generate temporary one to get public part than to
-        fake the process some other way.
+        Administrator helper; generates a new dummy sshkey.
+
+        The private part is not really used anywhere so it's discarded, public
+        part is to be registered with the proper key title to map GSS-API
+        (Kerberos) login to the user identity.
         """
 
         if not self.is_valid_principal(principal):
@@ -59,7 +60,12 @@ class GssGitlab:
         return 0
 
     def do_syncdb(self):
-        """generate k5login and k5keys from keys registered in gitlab"""
+        """
+        Administrator helper; generates .k5login and .k5keys configs for ssh and gssgitlab.
+
+        .k5login is used by sshd to authorize user for login to the git account
+        .k5keys is used by gssgitlab to map principal to the ssh key registered in gitlab
+        """
 
         try:
             proc = subprocess.run(
@@ -86,17 +92,16 @@ class GssGitlab:
 
     def do_shell(self, args):
         """
-        shell-exec subcommand
+        shell wrapper implementation; handles gssapi login mapping to gitlab-shell invocation
 
-        For ssh connections check authentication method and credential data.
-            - for unknown authentication methods die/return
-            - for GSS-API authenticated sessions
-                - resolve keyid based on principal and spawn gitlab-shell
-                - die/return if keyid is not properly registered; k5login and k5keys are out-of-sync
-            - for any other method or non-ssh session pass the command to the normal shell
-                - sshd configuration does not allow Password authentication
-                  and ForcedCommand confines logon to gitlab-shell only
-                - local invocations executes normaly for local services
+        For ssh connections
+            - check exposed auth info, parse authentication method and map principal to keyid if possible
+            - for unknown methods exit (sshd not configured properly)
+            - for gss-api method with resolved keyid spawn a gitlab-shell, otherwise exit
+            - for other methods pass to ormal shell execution, allowing forcecommand handle the login as usual
+
+        For local invocations (some services are running under git account)
+            - execute normal shell
         """
 
         # on ssh connection
@@ -121,7 +126,7 @@ class GssGitlab:
 
     def _get_authdata(self):
         """
-        resolves keyid for gssapi authenticated principal from exposed authentication info
+        from exposed authentication info resolves keyid by authenticated kerberos principal
 
         Returns:
            tuple of (str method, str keyid)

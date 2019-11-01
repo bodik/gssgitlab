@@ -6,11 +6,13 @@ authenticated access to the repositories.
 Project is heavily inspired by
 [Kgitlab](https://github.com/iamjamestl/kgitlab).
 
-Because the GitLab shell expects SSH users to authenticate with SSH keys,
-gssgitlab allows to generate a sort of "dummy" SSH keys for users and upon
-their registration maps them to a Kerberos principals. Then, on login,
-gssgitlab can lookup the keyid associated with the Kerberos principal and pass
-the right key number to GitLab shell to authenticate the user.
+Gitlab uses SSH Pubkey authentication with ForcedCommand to map keys to the
+corresponding users/identities. With GSS-API/Kerberos authentication no such
+feature exist, but can be emulated in the shell of the *git* user. This tool
+allows Gitlab administrator to generate, register and map to kerberos
+principals a "dummy" keys, so upon successfull GSS-API logon, gssgitlab (shell
+for *git*) can lookup the keyid of the logged in user and spawn appropriate
+gitlab-shell in the same way the ForcedCommand would normally do.
 
 
 ## Motivation
